@@ -1,4 +1,4 @@
-# Copyright 2015-2016 F5 Networks Inc.
+# Copyright 2016 F5 Networks Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 #
 
-from f5_heat.resources import f5_sys_partition
+from f5_heat.resources import f5_sys_save
 from heat.common import exception
 from heat.common import template_format
 from heat.engine.hot.template import HOTemplate20150430
@@ -28,7 +28,7 @@ heat_template_version: 2015-04-30
 description: Testing iAppService plugin
 resources:
   bigip_rsrc:
-    type: F5::BigIP
+    type: F5::BigIP::Device
     properties:
       ip: 10.0.0.1
       username: admin
@@ -59,8 +59,8 @@ def create_resource_definition(templ_dict):
     '''Create resource definition.'''
     rsrc_def = rsrc_defn.ResourceDefinition(
         'test_stack',
-        templ_dict['resources']['partition']['type'],
-        properties=templ_dict['resources']['partition']['properties']
+        templ_dict['resources']['save_rsrc']['type'],
+        properties=templ_dict['resources']['save_rsrc']['properties']
     )
     return rsrc_def
 
@@ -70,7 +70,7 @@ def F5SysSave():
     '''Instantiate the F5SysSave resource.'''
     template_dict = mock_template()
     rsrc_def = create_resource_definition(template_dict)
-    return f5_sys_partition.F5SysSave(
+    return f5_sys_save.F5SysSave(
         "testing_save", rsrc_def, mock.MagicMock()
     )
 
@@ -78,20 +78,9 @@ def F5SysSave():
 @pytest.fixture
 def CreateSaveSideEffect(F5SysSave):
     F5SysSave.get_bigip()
-    F5SysSave.bigip.tm.sys.folders.folder.create.side_effect = Exception()
+    F5SysSave.bigip.tm.sys.config.exec_cmd.side_effect = Exception()
     return F5SysSave
 
-
-@pytest.fixture
-def DeleteSaveSideEffect(F5SysSave):
-    F5SysSave.get_bigip()
-    F5SysSave.bigip.tm.sys.folders.folder.load.\
-        side_effect = exception.ResourceFailure(
-            mock.MagicMock(),
-            None,
-            action='Delete'
-        )
-    return F5SysSave
 
 # Tests
 
@@ -99,10 +88,8 @@ def DeleteSaveSideEffect(F5SysSave):
 def test_handle_create(F5SysSave):
     create_result = F5SysSave.handle_create()
     assert create_result is None
-    assert F5SysSave.bigip.tm.sys.folders.folder.create.\
-        call_args == mock.call(
-            **partition_dict
-        )
+    assert F5SysSave.bigip.tm.sys.config.exec_cmd.call_args == \
+        mock.call('save')
 
 
 def test_handle_create_error(CreateSaveSideEffect):
@@ -113,24 +100,11 @@ def test_handle_create_error(CreateSaveSideEffect):
 
 def test_handle_delete(F5SysSave):
     delete_result = F5SysSave.handle_delete()
-    assert delete_result is None
-    assert F5SysSave.bigip.tm.sys.folders.folder.load.\
-        call_args == mock.call(name=u'partition_test')
-
-
-def test_handle_delete_error(DeleteSaveSideEffect):
-    '''Currently, test exists to satisfy 100% code coverage.'''
-    with pytest.raises(exception.ResourceFailure):
-        DeleteSaveSideEffect.handle_delete()
-
-
-def test_get_partition_name(F5SysSave):
-    partition_name = F5SysSave.get_partition_name()
-    assert partition_name == 'partition_test'
+    assert delete_result is True
 
 
 def test_resource_mapping():
-    rsrc_map = f5_sys_partition.resource_mapping()
+    rsrc_map = f5_sys_save.resource_mapping()
     assert rsrc_map == {
-        'F5::Sys::Save': f5_sys_partition.F5SysSave
+        'F5::Sys::Save': f5_sys_save.F5SysSave
     }

@@ -29,10 +29,12 @@ class F5SysSync(resource.Resource, F5BigIPMixin):
 
     PROPERTIES = (
         BIGIP_SERVER,
-        DEVICE_GROUP
+        DEVICE_GROUP,
+        DEVICE_GROUP_PARTITION
     ) = (
         'bigip_server',
-        'device_group'
+        'device_group',
+        'device_group_partition'
     )
 
     properties_schema = {
@@ -44,6 +46,11 @@ class F5SysSync(resource.Resource, F5BigIPMixin):
         DEVICE_GROUP: properties.Schema(
             properties.Schema.STRING,
             _('Name of the device group to sync BIG-IP device to.'),
+            required=True
+        ),
+        DEVICE_GROUP_PARTITION: properties.Schema(
+            properties.Schema.STRING,
+            _('Partition name where device group is located on the device.'),
             required=True
         )
     }
@@ -57,8 +64,9 @@ class F5SysSync(resource.Resource, F5BigIPMixin):
 
         try:
             dg_name = self.properties[self.DEVICE_GROUP]
+            dg_part = self.properties[self.DEVICE_GROUP_PARTITION]
             self.bigip.tm.cm.device_groups.device_group.exists(
-                name=dg_name, partition=self.partition_name
+                name=dg_name, partition=dg_part
             )
             config_sync_cmd = 'config-sync to-group {}'.format(
                 self.properties[self.DEVICE_GROUP]
@@ -91,4 +99,4 @@ class F5SysSync(resource.Resource, F5BigIPMixin):
 
 
 def resource_mapping():
-    return {'F5::Sys::Save': F5SysSync}
+    return {'F5::Sys::Sync': F5SysSync}
