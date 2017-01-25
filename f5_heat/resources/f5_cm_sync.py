@@ -20,30 +20,32 @@ from heat.common.i18n import _
 from heat.engine import properties
 from heat.engine import resource
 
-from common.mixins import f5_bigip
-from common.mixins import F5BigIPMixin
+from f5.multi_device.cluster import DeviceGroup
 
 
-class F5CmSync(resource.Resource, F5BigIPMixin):
+class F5CmSync(resource.Resource):
     '''Sync the device configuration to the device group.'''
 
     PROPERTIES = (
-        BIGIP_SERVER,
-        DEVICE_GROUP,
-        DEVICE_GROUP_PARTITION
+        DEVICES,
+        DEVICE_GROUP_NAME,
+        DEVICE_GROUP_PARTITION,
+        DEVICE_GROUP_TYPE
     ) = (
-        'bigip_server',
-        'device_group',
-        'device_group_partition'
+        'devices',
+        'device_group_name',
+        'device_group_partition',
+        'device_group_type'
     )
 
     properties_schema = {
-        BIGIP_SERVER: properties.Schema(
-            properties.Schema.STRING,
-            _('Reference to the BigIP Server resource.'),
-            required=True
+        DEVICES: properties.Schema(
+            properties.Schema.LIST,
+            _('BigIP resource references for devices to sync.'),
+            required=True,
+            update_allowed=True
         ),
-        DEVICE_GROUP: properties.Schema(
+        DEVICE_GROUP_NAME: properties.Schema(
             properties.Schema.STRING,
             _('Name of the device group to sync BIG-IP device to.'),
             required=True
@@ -52,10 +54,24 @@ class F5CmSync(resource.Resource, F5BigIPMixin):
             properties.Schema.STRING,
             _('Partition name where device group is located on the device.'),
             required=True
+        ),
+        DEVICE_GROUP_TYPE: properties.Schema(
+            properties.Schema.STRING,
+            _('The type of cluster to create (sync-failover)'),
+            default='sync-failover',
+            required=False
         )
     }
 
-    @f5_bigip
+    def _set_devices(self):
+        '''Retrieve the BIG-IP® connection from the F5::BigIP resource.'''
+
+        self.devices = []
+        for device in self.properties[self.DEVICES]:
+            self.devices.append(
+                self.stack.resource_by_refid(device).get_bigip()
+            )
+
     def handle_create(self):
         '''Sync the configuration on the BIG-IP® device to the device group.
 
@@ -63,35 +79,20 @@ class F5CmSync(resource.Resource, F5BigIPMixin):
         '''
 
         try:
-            dg_name = self.properties[self.DEVICE_GROUP]
-            dg_part = self.properties[self.DEVICE_GROUP_PARTITION]
-            self.bigip.tm.cm.device_groups.device_group.exists(
-                name=dg_name, partition=dg_part
+            self._set_devices()
+            dg_name = self.properties[self.DEVICE_GROUP_NAME]
+            dg_partition = self.properties[self.DEVICE_GROUP_PARTITION]
+            dg_type = self.properties[self.DEVICE_GROUP_TYPE]
+            dg = DeviceGroup(
+                devices=self.devices,
+                device_group_name=dg_name,
+                device_group_type=dg_type,
+                device_group_partition=dg_partition
             )
-            config_sync_cmd = 'config-sync to-group {}'.format(
-                self.properties[self.DEVICE_GROUP]
-            )
-            self.bigip.tm.cm.exec_cmd('run', utilCmdArgs=config_sync_cmd)
+            return True
         except Exception as ex:
             raise exception.ResourceFailure(ex, None, action='CREATE')
 
-    @f5_bigip
-    def check_create_complete(self, token):
-        '''Determine whether the BIG-IP®'s sync status is 'In-Sync'.
-
-        :raises: ResourceFailure
-        '''
-
-        sync_status = self.bigip.tm.cm.sync_status
-        sync_status.refresh()
-        status = \
-            (sync_status.entries['https://localhost/mgmt/tm/cm/sync-status/0']
-             ['nestedStats']['entries']['status']['description'])
-        if status.lower() == 'in sync':
-            return True
-        return False
-
-    @f5_bigip
     def handle_delete(self):
         '''Delete sync resource, which has no communication with the device.'''
 

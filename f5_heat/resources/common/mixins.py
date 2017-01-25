@@ -31,6 +31,13 @@ def f5_bigip(func):
     return func_wrapper
 
 
+def f5_bigiq(func):
+    def func_wrapper(self, *args, **kwargs):
+        self.get_bigiq()
+        return func(self, *args, **kwargs)
+    return func_wrapper
+
+
 class F5BigIPMixin(object):
     '''This class is to be subclassed by an F5® Heat Resource Plugin.'''
 
@@ -38,7 +45,9 @@ class F5BigIPMixin(object):
         '''Retrieve the BIG-IP® connection from the F5::BigIP resource.'''
 
         refid = self.properties[self.BIGIP_SERVER]
-        self.bigip = self.stack.resource_by_refid(refid).get_bigip()
+        resource = self.stack.resource_by_refid(refid)
+        if resource:
+            self.bigip = resource.get_bigip()
 
     def set_partition_name(self):
         '''Return the partition name from the F5::Sys::Partition resource.
@@ -49,3 +58,15 @@ class F5BigIPMixin(object):
         refid = self.properties[self.PARTITION]
         self.partition_name = \
             self.stack.resource_by_refid(refid).get_partition_name()
+
+
+class F5BigIQMixin(object):
+    '''This class is to be subclassed by an F5® Heat Resource Plugin.'''
+
+    def get_bigiq(self):
+        '''Retrieve the BIG-IQ® connection from the F5::BigIQ resource.'''
+
+        refid = self.properties[self.BIGIQ_SERVER]
+        resource = self.stack.resource_by_refid(refid)
+        if resource:
+            self.bigiq = resource.get_bigiq()
